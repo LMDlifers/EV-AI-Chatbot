@@ -1,0 +1,6 @@
+ipykernel
+kagglehub
+kagglehub[pandas-datasets]
+sentence-transformers
+scikit-learn
+numpy

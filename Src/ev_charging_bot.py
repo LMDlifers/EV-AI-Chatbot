@@ -2,7 +2,7 @@
 import pandas as pd
 import numpy as np
 from sentence_transformers import SentenceTransformer
-from sklearn.cluster import KMeans
+import hdbscan
 from sklearn.metrics.pairwise import cosine_similarity
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
@@ -18,7 +18,7 @@ class EVChargingStationBot:
     
     def __init__(self, dataset_handle: str = "sahirmaharajj/electric-vehicle-charging-stations-2024", 
                 file_path: str = None, embedding_model: str = 'all-MiniLM-L6-v2',
-                decoder_model: str = "gpt2", use_decoder: bool = True):
+                decoder_model: str = "all-MiniLM-L6-v2", use_decoder: bool = True):
         """
         Initialize the EV Charging Station Bot.
         
@@ -162,23 +162,41 @@ class EVChargingStationBot:
             self.tokenizer = None
             self.decoder_model = None
     
-    def setup_geographic_clustering(self, n_clusters: int = 20) -> None:
-        """Setup geographic clustering for location-based optimization."""
+    # Hyperparameter tuning not in used due for performance's sake. But can use Hyperopt for significant improvement compared to GridSearch
+    def setup_geographic_clustering(self, min_cluster_size: int = 5, min_samples: int = 3) -> None:
+        """Setup geographic clustering for location-based optimization using HDBSCAN."""
         if 'latitude' in self.df.columns and 'longitude' in self.df.columns:
             # Remove rows with missing coordinates
             valid_coords = self.df.dropna(subset=['latitude', 'longitude'])
             
             if len(valid_coords) > 0:
-                kmeans = KMeans(n_clusters=min(n_clusters, len(valid_coords)), random_state=42)
+                from sklearn.preprocessing import StandardScaler
+                import hdbscan
+                
                 coords = valid_coords[['latitude', 'longitude']].values
-                cluster_labels = kmeans.fit_predict(coords)
+                
+                # Standardize coordinates
+                scaler = StandardScaler()
+                coords_scaled = scaler.fit_transform(coords)
+                
+                # Apply HDBSCAN clustering
+                clusterer = hdbscan.HDBSCAN(
+                    min_cluster_size=min_cluster_size,
+                    min_samples=min_samples,
+                    metric='euclidean'
+                )
+                cluster_labels = clusterer.fit_predict(coords_scaled)
                 
                 # Map clusters back to original dataframe
                 self.df['geo_cluster'] = -1  # Default for missing coordinates
                 self.df.loc[valid_coords.index, 'geo_cluster'] = cluster_labels
                 
-                self.geo_clusters = kmeans
-                print(f"Geographic clustering completed with {n_clusters} clusters")
+                self.geo_clusters = clusterer
+                
+                # Print results
+                n_clusters = len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)
+                n_noise = list(cluster_labels).count(-1)
+                print(f"HDBSCAN clustering completed: {n_clusters} clusters, {n_noise} outliers")
             else:
                 print("No valid coordinates found for clustering")
         else:
@@ -257,88 +275,6 @@ class EVChargingStationBot:
         
         return results
     
-    # === CHAT METHODS WITH NATURAL LANGUAGE RESPONSES ===
-    
-    def chat_semantic_search(self, query: str, limit: int = 3) -> str:
-        """
-        Perform semantic search and generate a natural language response.
-        """
-        # Get search results
-        results_df = self.semantic_search(query, limit)
-        
-        # Generate natural language response
-        if self.use_decoder and self.decoder_model is not None:
-            response = self._generate_response(query, results_df, search_type="semantic")
-        else:
-            response = self._simple_template_decoder(query, results_df, search_type="semantic")
-        
-        return response
-    
-    def chat_find_nearby(self, lat: float, lon: float, radius_km: float = 10, limit: int = 3) -> str:
-        """
-        Find nearby stations and generate directions/response.
-        """
-        results_df = self.find_nearby_stations(lat, lon, radius_km, limit)
-        
-        # Create location context
-        location_query = f"charging stations near coordinates {lat}, {lon} within {radius_km}km"
-        
-        if self.use_decoder and self.decoder_model is not None:
-            response = self._generate_response(location_query, results_df, search_type="location")
-        else:
-            response = self._simple_template_decoder(location_query, results_df, search_type="location")
-        
-        return response
-    
-    def chat_find_fast_charging(self, city: str = None, limit: int = 3) -> str:
-        """
-        Find fast charging stations with natural language response.
-        """
-        results_df = self.find_fast_charging(city, limit)
-        
-        city_text = f"in {city}" if city else ""
-        query = f"fast charging stations {city_text}"
-        
-        if self.use_decoder and self.decoder_model is not None:
-            response = self._generate_response(query, results_df, search_type="fast_charging")
-        else:
-            response = self._simple_template_decoder(query, results_df, search_type="fast_charging")
-        
-        return response
-    
-    def chat_find_level2_charging(self, city: str = None, min_ports: int = 1, limit: int = 3) -> str:
-        """
-        Find Level 2 charging stations with natural language response.
-        """
-        results_df = self.find_level2_charging(city, min_ports, limit)
-        
-        city_text = f"in {city}" if city else ""
-        query = f"Level 2 charging stations {city_text}"
-        
-        if self.use_decoder and self.decoder_model is not None:
-            response = self._generate_response(query, results_df, search_type="level2_charging")
-        else:
-            response = self._simple_template_decoder(query, results_df, search_type="level2_charging")
-        
-        return response
-    
-    # === RESPONSE GENERATION METHODS ===
-    
-    def _generate_response(self, query: str, results_df: pd.DataFrame, search_type: str) -> str:
-        """
-        Generate natural language response using decoder model.
-        """
-        # Prepare context from search results
-        context = self._prepare_context(results_df, search_type)
-        
-        # Create prompt for the decoder
-        prompt = self._create_prompt(query, context, search_type)
-        
-        # Generate response using decoder
-        response = self._decode_response(prompt)
-        
-        return response
-    
     def _prepare_context(self, results_df: pd.DataFrame, search_type: str) -> str:
         """
         Prepare structured context from search results.
@@ -373,57 +309,58 @@ class EVChargingStationBot:
         
         return "\n".join(context_parts)
     
-    def _create_prompt(self, query: str, context: str, search_type: str) -> str:
-        """
-        Create a structured prompt for the decoder model.
-        """
+    def _create_prompt(self, query: str, context: str, search_type: str, conversation_context: Dict = None) -> str:
+        """Create an intelligent prompt that lets LLM handle conversation flow."""
+        
+        # System context about the assistant's capabilities
+        system_context = f"""You are an intelligent EV charging station assistant. You can help users find charging stations using these actions:
 
-        prompt_templates = {
-            "semantic": 
-            
-                f"""User asked: "{query}"
+    AVAILABLE ACTIONS:
+    - SEARCH_DC_FAST: Find DC fast charging stations (20-60 min charge)
+    - SEARCH_LEVEL2: Find Level 2 stations (2-8 hour charge) 
+    - SEARCH_LEVEL1: Find Level 1 stations (8-12 hour charge)
+    - SEARCH_NEARBY: Find stations near coordinates
+    - ASK_CHARGER_TYPE: Ask user to specify charging preference
+    - PROVIDE_DIRECTIONS: Give navigation to specific station
 
-                Here are the relevant charging stations I found:
-                {context}
+    CURRENT LOCATION: {conversation_context.get('location', {}).get('name', 'New York City')} 
+    USER CONTEXT: {conversation_context if conversation_context else 'New conversation'}
 
-                Please provide a helpful response with directions and recommendations:""",
-                        
-            "location": 
+    CONVERSATION HISTORY: {context}
 
-                f"""User is looking for: {query}
+    USER QUERY: "{query}"
 
-                Here are the nearby charging stations:
-                {context}
+    INSTRUCTIONS:
+    1. Understand what the user needs
+    2. If charging type is unclear, ask for preference with options
+    3. If user specifies or implies urgency, suggest DC Fast charging
+    4. When presenting station options, number them 1-5 for easy selection
+    5. For station selection (numbers 1-5), provide navigation and tips
+    6. Be conversational and helpful
+    7. Always mention distance and charging details
 
-                Please provide directions and recommendations:""",
-                        
-            "fast_charging": 
+    RESPOND WITH:"""
 
-                f"""User is looking for: {query}
-
-                Here are the available fast charging options:
-                {context}
-
-                Please provide helpful information and directions:""",
-                        
-            "level2_charging": 
-
-                f"""User is looking for: {query}
-
-                Here are the available Level 2 charging options:
-                {context}
-
-                Please provide helpful information and recommendations:"""
-        }
-                
-        return prompt_templates.get(search_type, prompt_templates["semantic"])
+        return system_context
     
-    def _decode_response(self, prompt: str, max_length: int = 200, temperature: float = 0.7) -> str:
-        """
-        Generate response using the decoder model.
-        """
-        # Encode the prompt
-        inputs = self.tokenizer.encode(prompt, return_tensors="pt", truncation=True, max_length=512)
+    def _decode_response(self, prompt: str, max_length: int = 300, temperature: float = 0.7) -> str:
+        """Generate response with conversation awareness."""
+        
+        # Add conversation instructions to prompt
+        enhanced_prompt = f"""{prompt}
+
+    RESPONSE GUIDELINES:
+    - Be helpful and conversational
+    - If user needs charging, ask about urgency/type if unclear
+    - Provide numbered options when showing stations
+    - Include practical details (distance, ports, hours)
+    - Use emojis appropriately for better UX
+    - End with clear next steps for the user
+
+    Response:"""
+        
+        # [Keep existing generation code but use enhanced_prompt]
+        inputs = self.tokenizer.encode(enhanced_prompt, return_tensors="pt", truncation=True, max_length=512)
         
         # Generate response using different decoding strategies
         with torch.no_grad():
@@ -446,27 +383,380 @@ class EVChargingStationBot:
         
         return response if response else "I found the stations listed above. Please let me know if you need more specific directions!"
     
-    def _simple_template_decoder(self, query: str, results_df: pd.DataFrame, search_type: str) -> str:
-        """
-        Template-based response generation (lighter alternative).
-        """
-        if results_df.empty:
-            return f"I couldn't find any charging stations matching '{query}'. Try broadening your search criteria."
+    def _generate_intelligent_response(self, query: str, context: str, conversation_context: Dict) -> Dict:
+        """Let LLM generate response and determine actions."""
         
-        station_count = len(results_df)
-        first_station = results_df.iloc[0]
+        # Enhanced prompt for conversation management
+        prompt = self._create_prompt(query, context, "intelligent", conversation_context)
         
-        responses = {
-            "semantic": f"I found {station_count} stations matching '{query}'. The top result is {first_station['Station Name']} located at {first_station['Street Address']}, {first_station['City']}. They're open {first_station['Access Days Time']}. Would you like directions or more details about any of these stations?",
-            
-            "location": f"There are {station_count} charging stations within your specified area. The closest is {first_station['Station Name']} at {first_station['Street Address']}, {first_station['City']}. You can charge there during {first_station['Access Days Time']}. Shall I provide turn-by-turn directions?",
-            
-            "fast_charging": f"Great! I found {station_count} fast charging stations. {first_station['Station Name']} in {first_station['City']} has {first_station['EV DC Fast Count']} DC fast charging ports and is available {first_station['Access Days Time']}. This will get you charged up quickly!",
-            
-            "level2_charging": f"I found {station_count} Level 2 charging stations. {first_station['Station Name']} in {first_station['City']} has {first_station['EV Level2 EVSE Num']} Level 2 ports and is available {first_station['Access Days Time']}. Perfect for longer charging sessions!"
+        # Get LLM response
+        llm_response = self._decode_response(prompt, max_length=300)
+        
+        # Parse LLM response for actions
+        actions = self._parse_llm_actions(llm_response, query, conversation_context)
+        
+        return {
+            'response': llm_response,
+            'context': conversation_context,
+            'actions': actions,
+            'data': actions.get('search_results', [])
         }
+
+    def _parse_llm_actions(self, llm_response: str, user_query: str, context: Dict) -> Dict:
+        """Parse LLM response to extract actionable commands."""
+        actions = {'type': 'response_only'}
         
-        return responses.get(search_type, responses["semantic"])
+        # Check if LLM suggests searching (you can train it to use keywords)
+        response_lower = llm_response.lower()
+        
+        if 'search_dc_fast' in response_lower or ('fast' in response_lower and 'charging' in response_lower):
+            actions = self._execute_search('dc_fast', context)
+        elif 'search_level2' in response_lower or ('level 2' in response_lower):
+            actions = self._execute_search('level2', context)
+        elif 'search_level1' in response_lower or ('level 1' in response_lower):
+            actions = self._execute_search('level1', context)
+        elif any(char.isdigit() for char in user_query) and 'station' in llm_response.lower():
+            # User selected a station number
+            actions = self._handle_station_selection(user_query, context)
+        
+        return actions
+        
+    def _simple_template_decoder(self, query: str, results_df: pd.DataFrame, search_type: str) -> str:
+        """Enhanced template-based response generation."""
+        query_lower = query.lower()
+        
+        # Handle greetings and general queries FIRST
+        if any(word in query_lower for word in ['hi', 'hello', 'hey', 'help']) or search_type in ['greeting', 'template']:
+            return """👋 Hello! I'm your EV charging assistant. I can help you find:
+
+    🔌 **Charging Options:**
+    • DC Fast Charging (20-60 min) - Perfect for road trips
+    • Level 2 Charging (2-8 hours) - Great for shopping/work
+    • Level 1 Charging (8-12 hours) - Good for overnight
+
+    📍 **Location Services:**
+    • Find stations near you
+    • Search by city
+    • 24-hour accessible stations
+
+    Just tell me what you need! For example:
+    • "I need fast charging"
+    • "Find stations in Seattle" 
+    • "I need to charge my car urgently"
+
+    What can I help you find today?"""
+
+        # Handle charging requests
+        if any(word in query_lower for word in ['charge', 'charging', 'battery', 'power', 'station']):
+            if any(word in query_lower for word in ['fast', 'quick', 'urgent', 'emergency', 'dc']):
+                return """⚡ **Fast charging it is!** 
+
+    I'll find DC fast charging stations near New York City for you. These can charge your car in 20-60 minutes.
+
+    Let me search for the best options... 
+
+    Would you like me to:
+    1. Show you the closest fast charging stations
+    2. Find stations with the most charging ports
+    3. Look for 24-hour accessible stations
+
+    Just let me know your preference!"""
+            
+            elif any(word in query_lower for word in ['level 2', 'l2', 'standard', 'regular']):
+                return """🔋 **Level 2 charging is a great choice!**
+
+    I'll find Level 2 charging stations near New York City. These typically take 2-8 hours for a full charge - perfect for shopping, work, or dining.
+
+    Searching for the best Level 2 options for you...
+
+    Would you prefer:
+    1. Stations with the most Level 2 ports
+    2. 24-hour accessible locations
+    3. Stations near shopping centers
+
+    Let me know what works best for you!"""
+            
+            elif any(word in query_lower for word in ['level 1', 'l1', 'slow', 'overnight']):
+                return """🏠 **Level 1 charging - perfect for overnight!**
+
+    I'll find Level 1 charging stations near New York City. These are slower (8-12 hours) but often free and great for overnight charging.
+
+    Searching for Level 1 options...
+
+    These are typically found at:
+    • Hotels and motels
+    • Some workplaces
+    • Residential areas
+    • Free public locations
+
+    Would you like me to show you the available options?"""
+            
+            else:
+                return """🔌 **I can help you find charging stations!**
+
+    What type of charging do you need?
+
+    1. **DC Fast Charging** ⚡ (20-60 mins) - Great when you're in a hurry
+    2. **Level 2 Charging** 🔋 (2-8 hours) - Perfect for longer stops
+    3. **Level 1 Charging** 🏠 (8-12 hours) - Good for overnight
+
+    Just reply with the number or tell me about your situation!"""
+        
+        # Handle number selections (1, 2, 3)
+        if query.strip() in ['1', '2', '3']:
+            if query.strip() == '1':
+                return """⚡ **Searching for DC Fast Charging stations...**
+
+    Finding the closest and fastest charging options near New York City. These will get you back on the road quickly!
+
+    Please wait while I locate the best DC fast charging stations for you..."""
+            elif query.strip() == '2':
+                return """🔋 **Searching for Level 2 Charging stations...**
+
+    Finding convenient Level 2 charging options near New York City. Perfect for while you shop, work, or dine!
+
+    Please wait while I find the best Level 2 stations for you..."""
+            elif query.strip() == '3':
+                return """🏠 **Searching for Level 1 Charging stations...**
+
+    Finding overnight and slow charging options near New York City. Great for extended stays!
+
+    Please wait while I locate Level 1 charging stations for you..."""
+        
+        # Handle station results
+        if not results_df.empty:
+            station_count = len(results_df)
+            first_station = results_df.iloc[0]
+            
+            # Get charging info for first station
+            dc_fast_count = first_station.get('EV DC Fast Count', 0)
+            level2_count = first_station.get('EV Level2 EVSE Num', 0)
+            level1_count = first_station.get('EV Level1 EVSE Num', 0)
+            
+            charging_info = []
+            if dc_fast_count > 0:
+                charging_info.append(f"{dc_fast_count} DC Fast")
+            if level2_count > 0:
+                charging_info.append(f"{level2_count} Level 2")
+            if level1_count > 0:
+                charging_info.append(f"{level1_count} Level 1")
+            
+            charging_text = " + ".join(charging_info) if charging_info else "Multiple types"
+            
+            if search_type == "semantic":
+                return f"""✅ I found {station_count} stations matching your request!
+
+    **🏆 Top Result:** {first_station['Station Name']}
+    📍 **Address:** {first_station['Street Address']}, {first_station['City']}
+    🕒 **Hours:** {first_station['Access Days Time']}
+    🔌 **Charging:** {charging_text} ports
+    {'🚗 **Distance:** ' + str(round(first_station['distance_km'], 1)) + ' km away' if 'distance_km' in first_station else ''}
+
+    **What would you like to do next?**
+    • Get directions to this station
+    • See more station options
+    • Get details about charging speeds
+    • Find different type of charging
+
+    How can I help you get charged up? 🚗⚡"""
+
+            elif search_type == "location":
+                return f"""📍 Found {station_count} charging stations in your area!
+
+    **🎯 Closest Station:** {first_station['Station Name']}
+    📍 **Address:** {first_station['Street Address']}, {first_station['City']}
+    🚗 **Distance:** {first_station.get('distance_km', 0):.1f} km away
+    🕒 **Hours:** {first_station['Access Days Time']}
+    🔌 **Available:** {charging_text} ports
+
+    **Ready to go?**
+    • Get turn-by-turn directions
+    • See all {station_count} nearby options
+    • Filter by charging type
+    • Check real-time availability
+
+    Shall I provide directions to get you there? 🗺️"""
+
+            elif search_type == "fast_charging":
+                return f"""⚡ Excellent! Found {station_count} fast charging stations!
+
+    **🚀 Featured Station:** {first_station['Station Name']}
+    📍 **Location:** {first_station['Street Address']}, {first_station['City']}
+    ⚡ **Fast Charging:** {dc_fast_count} DC Fast ports available
+    🕒 **Open:** {first_station['Access Days Time']}
+    {'🚗 **Distance:** ' + str(round(first_station['distance_km'], 1)) + ' km' if 'distance_km' in first_station else ''}
+
+    **⚡ Quick Charge Benefits:**
+    • 10-80% charge in 20-45 minutes
+    • Perfect for road trips
+    • Get back on the road fast!
+
+    **Next steps:**
+    • Navigate to this station
+    • See all fast charging options
+    • Check charging network (Tesla, Electrify America, etc.)
+
+    Ready to charge up quickly? 🔌"""
+
+            elif search_type == "level2_charging":
+                return f"""🔋 Perfect! Found {station_count} Level 2 charging stations!
+
+    **🎯 Recommended Station:** {first_station['Station Name']}
+    📍 **Location:** {first_station['Street Address']}, {first_station['City']}
+    🔋 **Level 2 Ports:** {level2_count} available
+    🕒 **Hours:** {first_station['Access Days Time']}
+    {'🚗 **Distance:** ' + str(round(first_station['distance_km'], 1)) + ' km' if 'distance_km' in first_station else ''}
+
+    **🔋 Level 2 Benefits:**
+    • 2-8 hour full charge
+    • Often cheaper than fast charging
+    • Great for longer stays
+
+    **Perfect for:**
+    • Shopping trips • Work days • Dining out • Movies
+
+    **What's next?**
+    • Get directions to this station
+    • See all Level 2 options nearby
+    • Check if payment required
+
+    Ready to plug in? 🔌"""
+
+            else:
+                # Generic results display
+                return f"""✅ Great! I found {station_count} charging stations for you!
+
+    **🏆 Top Match:** {first_station['Station Name']}
+    📍 {first_station['Street Address']}, {first_station['City']}
+    🔌 {charging_text} ports
+    🕒 {first_station['Access Days Time']}
+
+    Would you like directions to this station or see more options? 🚗⚡"""
+        
+        # Handle specific search terms
+        if any(word in query_lower for word in ['near', 'nearby', 'close', 'distance']):
+            return """📍 **I can find nearby charging stations!**
+
+    To give you the most accurate results, I'm using your current location as New York City.
+
+    What type of nearby stations are you looking for?
+    • ⚡ Fast charging (DC Fast)
+    • 🔋 Standard charging (Level 2)  
+    • 🏠 Slow charging (Level 1)
+    • 🌙 24-hour accessible stations
+
+    Just let me know your preference and I'll show you the closest options!"""
+        
+        if any(word in query_lower for word in ['24', 'hour', 'late', 'night', 'always', 'open']):
+            return """🌙 **Looking for 24-hour charging stations!**
+
+    Great choice for peace of mind! I'll find stations that are accessible anytime, day or night.
+
+    These are perfect for:
+    • Late night arrivals
+    • Early morning departures  
+    • Emergency charging situations
+    • Flexible travel schedules
+
+    Let me search for 24-hour accessible stations near New York City..."""
+        
+        if any(word in query_lower for word in ['tesla', 'supercharger']):
+            return """🚗 **Tesla Supercharger stations!**
+
+    Looking for Tesla-specific charging! Tesla Superchargers are some of the fastest and most reliable options.
+
+    **Tesla Charging Options:**
+    • ⚡ Supercharger V3 (250kW) - Fastest option
+    • ⚡ Supercharger V2 (150kW) - Still very fast  
+    • 🔌 Destination Chargers - At hotels/restaurants
+
+    I'll search for Tesla-compatible fast charging stations near New York City..."""
+        
+        if any(word in query_lower for word in ['free', 'cost', 'price', 'cheap']):
+            return """💰 **Looking for affordable charging options!**
+
+    Smart thinking! Let me help you find cost-effective charging solutions.
+
+    **Money-saving tips:**
+    • Level 1 charging often free at hotels/businesses
+    • Some Level 2 stations offer free charging
+    • Check apps like PlugShare for free locations
+    • Workplace charging often discounted
+
+    I'll prioritize stations with lower costs or free charging options..."""
+        
+        # Handle city searches
+        if any(word in query_lower for word in ['city', 'town', 'in ']):
+            return """🏙️ **City-specific search!**
+
+    I can help you find charging stations in specific cities! 
+
+    Just tell me:
+    • Which city you're interested in
+    • What type of charging you need
+    • Any specific requirements (24-hour, free, fast, etc.)
+
+    For example: "Find fast charging in Seattle" or "Level 2 stations in Portland"
+
+    What city would you like to explore for charging options?"""
+        
+        # Handle fallback cases
+        if search_type == 'fallback':
+            return """🔌 **I'm here to help with EV charging!**
+
+    I can assist you with:
+    • Finding charging stations by location
+    • Searching by charging type (Fast, Level 2, Level 1)
+    • Locating 24-hour accessible stations
+    • Getting directions and station details
+
+    Try asking me something like:
+    • "I need fast charging"
+    • "Find stations in [city name]"
+    • "Show me nearby charging options"
+    • "I need to charge my car urgently"
+
+    What can I help you find today?"""
+        
+        # Default fallback for unrecognized queries
+        return """🤖 **I'm your EV charging assistant!**
+
+    I didn't quite understand that request, but I'm here to help you find charging stations!
+
+    **Popular requests:**
+    • "I need fast charging" - For quick stops
+    • "Find Level 2 charging" - For longer stays
+    • "Show nearby stations" - Based on your location
+    • "24-hour charging" - Always accessible options
+
+    **You can also ask about:**
+    • Specific cities or locations
+    • Tesla Superchargers
+    • Free charging options
+    • Station details and directions
+
+    What would you like to know about EV charging? 🚗⚡"""
+    
+    def _fallback_template_response(self, user_query: str, conversation_context: Dict) -> Dict:
+        """Fallback response when decoder is not available."""
+        # Handle greetings FIRST, before trying semantic search
+        query_lower = user_query.lower()
+        
+        if any(word in query_lower for word in ['hi', 'hello', 'hey', 'help']):
+            response = self._simple_template_decoder(user_query, pd.DataFrame(), 'greeting')
+        else:
+            # Try semantic search for other queries
+            try:
+                results = self.semantic_search(user_query, limit=3)
+                response = self._simple_template_decoder(user_query, results, 'semantic')
+            except:
+                response = self._simple_template_decoder(user_query, pd.DataFrame(), 'fallback')
+        
+        return {
+            'response': response,
+            'context': conversation_context,
+            'actions': {'type': 'template_response'}
+        }
     
     # === UTILITY METHODS ===
     
@@ -509,3 +799,60 @@ class EVChargingStationBot:
             'total_fast_dc_ports': self.df['EV DC Fast Count'].sum()
         }
     
+    def chat_assistant(self, user_query: str, conversation_context: Dict = None) -> Dict:
+        """LLM-driven conversational interface."""
+        if conversation_context is None:
+            conversation_context = {
+                'location': {'lat': 40.7128, 'lon': -74.0060, 'name': 'New York City'},
+                'conversation_history': []
+            }
+        
+        # Add current query to history
+        conversation_context['conversation_history'].append(f"User: {user_query}")
+        
+        # Let LLM decide what to do based on query and context
+        context_text = self._build_context_for_llm(user_query, conversation_context)
+        
+        if self.use_decoder and self.decoder_model is not None:
+            response = self._generate_intelligent_response(user_query, context_text, conversation_context)
+        else:
+            response = self._fallback_template_response(user_query, conversation_context)
+        
+        # Add bot response to history
+        conversation_context['conversation_history'].append(f"Assistant: {response['response']}")
+        
+        return response
+    
+    def _build_context_for_llm(self, query: str, conversation_context: Dict) -> str:
+        """Build context string for LLM understanding."""
+        history = conversation_context.get('conversation_history', [])
+        recent_history = history[-6:] if len(history) > 6 else history  # Last 3 exchanges
+        
+        return "\n".join(recent_history) if recent_history else "Starting new conversation"
+
+    def _execute_search(self, charger_type: str, context: Dict) -> Dict:
+        """Execute search based on LLM decision."""
+        lat, lon = context['location']['lat'], context['location']['lon']
+        
+        try:
+            if charger_type == 'dc_fast':
+                results = self.find_nearby_stations(lat, lon, radius_km=25, limit=5)
+                dc_fast_col = pd.to_numeric(results['EV DC Fast Count'], errors='coerce').fillna(0)
+                filtered_results = results[dc_fast_col > 0]
+            elif charger_type == 'level2':
+                results = self.find_nearby_stations(lat, lon, radius_km=15, limit=5)
+                level2_col = pd.to_numeric(results['EV Level2 EVSE Num'], errors='coerce').fillna(0)
+                filtered_results = results[level2_col > 0]
+            else:  # level1
+                results = self.find_nearby_stations(lat, lon, radius_km=10, limit=5)
+                level1_col = pd.to_numeric(results['EV Level1 EVSE Num'], errors='coerce').fillna(0)
+                filtered_results = results[level1_col > 0]
+            
+            return {
+                'type': 'search_completed',
+                'search_results': filtered_results.to_dict('records') if not filtered_results.empty else [],
+                'charger_type': charger_type
+            }
+        except Exception as e:
+            return {'type': 'search_error', 'error': str(e)}
+        

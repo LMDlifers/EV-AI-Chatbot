@@ -5,3 +5,6 @@ sentence-transformers
 scikit-learn
 numpy
 pandas
+fastapi
+uvicorn
+sentence_transformers

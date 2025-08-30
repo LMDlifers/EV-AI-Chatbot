@@ -11,3 +11,8 @@ Connector Type: NACS (Tesla), CCS, CHAdeMO
 Charging Speed: Level 2 (AC) or Level 3 (DC Fast Charging)
 Network: Electrify America, EVgo, ChargePoint, etc.
 Cost: "Find free chargers nearby."
+
+Startup Instructions (To change later)
+cd to the base directory of the repo
+Do pip install -r requirements.txt
+Then, run python -m uvicorn src.server:app --reload to start the backend

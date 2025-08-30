@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Query
-from src.ev_charging_bot import EVChargingStationBot
+from Src.ev_charging_bot import EVChargingStationBot
 
 # Create a router
 router = APIRouter()

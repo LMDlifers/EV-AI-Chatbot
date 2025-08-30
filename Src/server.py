@@ -2,7 +2,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-from src.api import router
+from Src.api import router
 from contextlib import asynccontextmanager
 
 HOST="0.0.0.0"

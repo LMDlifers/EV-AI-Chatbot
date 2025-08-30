@@ -1,8 +1,8 @@
 import { createChatBotMessage } from "react-chatbot-kit";
 
 const config = {
-  botName: "MyBot",
-  initialMessages: [createChatBotMessage("Hello! How can I help you?")],
+  botName: "ZapVite",
+  initialMessages: [createChatBotMessage("Hello! Ask me anything EV-charging location related and I will help you!")],
 };
 
 export default config;

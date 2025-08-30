@@ -12,78 +12,16 @@ code {
     monospace;
 }
 
-/* Target the message text specifically */
-.rcw-message-text {
-  word-wrap: break-word;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
+/* Make input field vertically scrollable for long messages */
+.react-chatbot-kit-chat-input {
+  box-sizing: border-box;
+  width: 100%;
   max-width: 100%;
-}
-
-/* For user messages */
-.rcw-client .rcw-message-text {
-  background-color: #f0f0f0;
-  border-radius: 15px;
-  padding: 10px 15px;
-  max-width: 280px; /* Limit width for user messages */
-}
-
-/* For bot messages */
-.rcw-response .rcw-message-text {
-  background-color: #e6f7ff;
-  border-radius: 15px;
-  padding: 10px 15px;
-  max-width: 280px; /* Limit width for bot messages */
-}
-
-/* Ensure the message bubble container doesn't overflow */
-.rcw-message {
-  display: flex;
-  margin: 10px 0;
-}
-
-/* Chat container width */
-.rcw-chat-container {
-  width: 400px;
-  max-width: 100%;
-}
-
-/* Fix for the message input field */
-.rcw-new-message {
+  max-height: 100px;  /* maximum height before scrolling */
+  min-height: 40px;   /* optional: starting height */
+  padding: 8px;
+  resize: none;       /* prevents user from resizing manually */
+  overflow-y: auto;   /* enable vertical scroll when content exceeds max-height */
+  white-space: pre-wrap; /* preserve line breaks */
   word-wrap: break-word;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  min-height: 40px; /* Minimum height */
-  max-height: 120px; /* Maximum height before scrolling */
-  resize: none; /* Prevent manual resizing if desired */
-  padding: 10px;
-  border: 1px solid #ccc;
-  border-radius: 20px;
-  font-family: inherit;
-  line-height: 1.4;
-}
-
-/* Container for the input field to prevent overflow */
-.rcw-sender {
-  display: flex;
-  align-items: center;
-  padding: 10px;
-  background-color: #fff;
-  border-top: 1px solid #e0e0e0;
-}
-
-/* Ensure the send button stays aligned */
-.rcw-send {
-  margin-left: 10px;
-  flex-shrink: 0;
-}
-
-/* Optional: Add scrollbar for very long messages */
-.rcw-new-message::-webkit-scrollbar {
-  width: 6px;
-}
-
-.rcw-new-message::-webkit-scrollbar-thumb {
-  background-color: #ccc;
-  border-radius: 3px;
 }

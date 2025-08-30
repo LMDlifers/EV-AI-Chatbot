@@ -15,4 +15,4 @@ Cost: "Find free chargers nearby."
 Startup Instructions (To change later)
 cd to the base directory of the repo
 Do pip install -r requirements.txt
-Then, run python -m uvicorn src.server:app --reload to start the backend
+Then, run python -m uvicorn Src.server:app --reload to start the backend

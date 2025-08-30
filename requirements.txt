@@ -4,3 +4,4 @@ kagglehub[pandas-datasets]
 sentence-transformers
 scikit-learn
 numpy
+pandas

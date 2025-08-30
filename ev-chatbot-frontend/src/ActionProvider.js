@@ -1,4 +1,4 @@
-import axios from "axios";
+import { createChatBotMessage } from "react-chatbot-kit";
 
 class ActionProvider {
   constructor(createChatBotMessage, setStateFunc) {
@@ -6,18 +6,43 @@ class ActionProvider {
     this.setState = setStateFunc;
   }
 
+  // Handle user message by sending it to backend via GET with query parameter
   async handleUserMessage(message) {
-    try {
-      const res = await axios.post("http://localhost:5000/api/chat", { message });
-      const botReply = this.createChatBotMessage(res.data.reply);
+      try {
+          const encodedMessage = encodeURIComponent(message);
+          const url = `http://localhost:8000/chat?query=${encodedMessage}`;
+          console.log("Fetching from:", url);
+          
+          const response = await fetch(url, {
+              method: "GET",
+              headers: {
+                  "Content-Type": "application/json",
+              },
+          });
 
-      this.setState(prev => ({
-        ...prev,
-        messages: [...prev.messages, botReply],
-      }));
-    } catch (err) {
-      console.error(err);
-    }
+          console.log("Response status:", response.status);
+          
+          if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+          }
+
+          const data = await response.json();
+          console.log("Response data:", data);
+
+          const botMessage = this.createChatBotMessage(data.response || data.reply || "No response from server.");
+          
+          this.setState((prev) => ({
+              ...prev,
+              messages: [...prev.messages, botMessage],
+          }));
+      } catch (error) {
+          console.error("Detailed error:", error);
+          const botMessage = this.createChatBotMessage("⚠️ Server connection failed. Check console for details.");
+          this.setState((prev) => ({
+              ...prev,
+              messages: [...prev.messages, botMessage],
+          }));
+      }
   }
 }
 

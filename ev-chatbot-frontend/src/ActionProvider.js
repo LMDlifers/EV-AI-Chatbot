@@ -26,6 +26,8 @@ class ActionProvider {
       }
     });
   }
+  
+
 
   // Handle user message by sending it to backend via GET with query parameter
   async handleUserMessage(message) {
@@ -46,7 +48,7 @@ class ActionProvider {
         if (message.toLowerCase().includes("nearby") || message.toLowerCase().includes("near me")) {
             try {
                 const location = await this.getUserLocation();
-                url = `http://localhost:8000/nearby?lat=${location.lat}&lon=${location.lon}&radius_km=5`;
+                url = `${url}&lat=${location.lat}&lon=${location.lon}`;
             } catch (err) {
                 console.warn("Could not get location:", err);
             }

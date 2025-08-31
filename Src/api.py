@@ -8,20 +8,25 @@ router = APIRouter()
 bot = EVChargingStationBot(
     file_path="Electric_Vehicle_Charging_Stations.csv",
     decoder_model="gpt2",
-    use_decoder=True
+    use_decoder=False
 )
 
 @router.get("/chat")
 def chat(query: str = Query(..., description="User query for charging stations")):
-    response = bot.chat_semantic_search(query)
-    return {"query": query, "response": response}
+    response = bot.chat_assistant(query)
+    return {"query": query, "response": response['response']}
 
-@router.get("/nearby")
-def nearby(lat: float, lon: float, radius_km: float = 5):
-    response = bot.chat_find_nearby(lat, lon, radius_km)
-    return {"lat": lat, "lon": lon, "radius_km": radius_km, "response": response}
+# @router.get("/nearby")
+# def nearby(lat: float, lon: float, radius_km: float = 5):
+#     response = bot.chat_find_nearby(lat, lon, radius_km)
+#     return {"lat": lat, "lon": lon, "radius_km": radius_km, "response": response}
 
-@router.get("/fast-charging")
-def fast_charging(city: str):
-    response = bot.chat_find_fast_charging(city)
-    return {"city": city, "response": response}
+# @router.get("/fast-charging")
+# def fast_charging(city: str):
+#     response = bot.chat_find_fast_charging(city)
+#     return {"city": city, "response": response}
+
+# @router.get("/fast-charging")
+# def fast_charging(city: str):
+#     response = bot.chat_find_fast_charging(city)
+#     return {"city": city, "response": response}

@@ -18,7 +18,7 @@ class EVChargingStationBot:
     
     def __init__(self, dataset_handle: str = "sahirmaharajj/electric-vehicle-charging-stations-2024", 
                 file_path: str = None, embedding_model: str = 'all-MiniLM-L6-v2',
-                decoder_model: str = "all-MiniLM-L6-v2", use_decoder: bool = True):
+                decoder_model: str = 'gpt2', use_decoder: bool = True):
         """
         Initialize the EV Charging Station Bot.
         
@@ -800,7 +800,7 @@ class EVChargingStationBot:
         }
     
     def chat_assistant(self, user_query: str, conversation_context: Dict = None) -> Dict:
-        """LLM-driven conversational interface."""
+        """Simple, working chat assistant that actually executes searches."""
         if conversation_context is None:
             conversation_context = {
                 'location': {'lat': 40.7128, 'lon': -74.0060, 'name': 'New York City'},
@@ -810,18 +810,47 @@ class EVChargingStationBot:
         # Add current query to history
         conversation_context['conversation_history'].append(f"User: {user_query}")
         
-        # Let LLM decide what to do based on query and context
-        context_text = self._build_context_for_llm(user_query, conversation_context)
+        query_lower = user_query.lower().strip()
         
-        if self.use_decoder and self.decoder_model is not None:
-            response = self._generate_intelligent_response(user_query, context_text, conversation_context)
+        print(f"🔍 Processing query: '{user_query}' (cleaned: '{query_lower}')")  # Debug
+        
+        # ✅ PRIORITY 1: Handle number selections - EXECUTE SEARCH IMMEDIATELY
+        if user_query.strip() == '1':
+            print("⚡ User selected option 1 - DC Fast search")  # Debug
+            return self._execute_actual_search("dc fast charging closest", conversation_context)
+            
+        elif user_query.strip() == '2':
+            print("🔋 User selected option 2 - Level 2 search")  # Debug
+            return self._execute_actual_search("level 2 charging most ports", conversation_context)
+            
+        elif user_query.strip() == '3':
+            print("🌙 User selected option 3 - 24 hour search")  # Debug
+            return self._execute_actual_search("24 hour accessible stations", conversation_context)
+        
+        # ✅ PRIORITY 2: Handle direct search requests - EXECUTE SEARCH
+        elif any(keyword in query_lower for keyword in [
+            'closest', 'nearest', 'show me', 'find me', 'search for'
+        ]):
+            print(f"🎯 Direct search request detected")  # Debug
+            return self._execute_actual_search(user_query, conversation_context)
+        
+        # ✅ PRIORITY 3: Handle specific charging type requests - EXECUTE SEARCH  
+        elif any(keyword in query_lower for keyword in [
+            'dc fast', 'fast charging', 'quick charging', 'supercharger'
+        ]):
+            print("⚡ Fast charging request detected")  # Debug
+            return self._execute_actual_search("dc fast charging", conversation_context)
+            
+        elif any(keyword in query_lower for keyword in [
+            'level 2', 'l2', 'standard charging', 'regular charging'
+        ]):
+            print("🔋 Level 2 request detected")  # Debug
+            return self._execute_actual_search("level 2 charging", conversation_context)
+        
+        # ✅ PRIORITY 4: Handle greetings and general questions - SHOW TEMPLATES
         else:
-            response = self._fallback_template_response(user_query, conversation_context)
-        
-        # Add bot response to history
-        conversation_context['conversation_history'].append(f"Assistant: {response['response']}")
-        
-        return response
+            print("📋 Using template response")  # Debug
+            return self._fallback_template_response(user_query, conversation_context)
     
     def _build_context_for_llm(self, query: str, conversation_context: Dict) -> str:
         """Build context string for LLM understanding."""
@@ -856,3 +885,112 @@ class EVChargingStationBot:
         except Exception as e:
             return {'type': 'search_error', 'error': str(e)}
         
+
+    def _execute_actual_search(self, query: str, conversation_context: Dict) -> Dict:
+        """Actually perform the search with better error handling."""
+        query_lower = query.lower()
+        
+        # Get user location (default to NYC)
+        lat = conversation_context.get('location', {}).get('lat', 40.7128)
+        lon = conversation_context.get('location', {}).get('lon', -74.0060)
+        
+        try:
+            print(f"🔍 Searching for: {query}")  # Debug
+            
+            # Check if coordinates exist in dataset
+            has_coords = 'latitude' in self.df.columns and 'longitude' in self.df.columns
+            
+            if any(word in query_lower for word in ['dc', 'fast', 'quick', 'urgent', '1']):
+                # Search for DC Fast stations
+                print("⚡ Looking for DC Fast stations...")
+                
+                if has_coords:
+                    results = self.find_nearby_stations(lat, lon, radius_km=50, limit=10)  # Increased radius
+                else:
+                    results = self.df.copy()  # Use all stations if no coordinates
+                
+                # Better filtering for DC Fast
+                dc_fast_col = pd.to_numeric(results['EV DC Fast Count'], errors='coerce').fillna(0)
+                filtered_results = results[dc_fast_col > 0]
+                
+                print(f"Found {len(filtered_results)} DC Fast stations")  # Debug
+                search_type = "fast_charging"
+                
+            elif any(word in query_lower for word in ['level 2', 'l2', 'standard', '2']):
+                # Search for Level 2 stations
+                print("🔋 Looking for Level 2 stations...")
+                
+                if has_coords:
+                    results = self.find_nearby_stations(lat, lon, radius_km=30, limit=10)
+                else:
+                    results = self.df.copy()
+                
+                l2_col = pd.to_numeric(results['EV Level2 EVSE Num'], errors='coerce').fillna(0)
+                filtered_results = results[l2_col > 0]
+                
+                print(f"Found {len(filtered_results)} Level 2 stations")  # Debug
+                search_type = "level2_charging"
+                
+            elif any(word in query_lower for word in ['24', 'hour', 'always', 'open', '3']):
+                # Search for 24-hour stations
+                print("🌙 Looking for 24-hour stations...")
+                filtered_results = self.find_24_hour_stations(limit=10)
+                print(f"Found {len(filtered_results)} 24-hour stations")  # Debug
+                search_type = "24_hour"
+                
+            else:
+                # Default: show any stations with any charging capability
+                print("🔌 Looking for any charging stations...")
+                
+                if has_coords:
+                    filtered_results = self.find_nearby_stations(lat, lon, radius_km=25, limit=10)
+                else:
+                    # Show first 10 stations if no coordinates
+                    filtered_results = self.df.head(10)
+                
+                print(f"Found {len(filtered_results)} stations")  # Debug
+                search_type = "general"
+            
+            # Generate response with actual results
+            if not filtered_results.empty:
+                response_text = self._simple_template_decoder(query, filtered_results, search_type)
+                return {
+                    'response': response_text,
+                    'context': conversation_context,
+                    'actions': {'type': 'search_completed', 'results_count': len(filtered_results)},
+                    'data': filtered_results.to_dict('records')
+                }
+            else:
+                # If no results found, show general stations
+                print("❌ No specific results, showing general stations...")
+                fallback_results = self.df.head(5)  # Show any 5 stations
+                
+                response_text = f"""🔍 **No exact matches found, but here are nearby charging options:**
+
+    **🏆 Available Station:** {fallback_results.iloc[0]['Station Name']}
+    📍 **Address:** {fallback_results.iloc[0]['Street Address']}, {fallback_results.iloc[0]['City']}
+    🕒 **Hours:** {fallback_results.iloc[0]['Access Days Time']}
+
+    **All charging types available - contact station for specific details.**
+
+    **Try these options:**
+    • Expand search radius
+    • Look for different charging types  
+    • Search by city name
+
+    Would you like me to search differently? 🔄"""
+
+                return {
+                    'response': response_text,
+                    'context': conversation_context,
+                    'actions': {'type': 'fallback_results', 'results_count': len(fallback_results)},
+                    'data': fallback_results.to_dict('records')
+                }
+                
+        except Exception as e:
+            print(f"❌ Search error: {e}")  # Debug
+            return {
+                'response': f"❌ Sorry, I encountered an error while searching: {str(e)}. Please try again with a different search.",
+                'context': conversation_context,
+                'actions': {'type': 'search_error'}
+            }

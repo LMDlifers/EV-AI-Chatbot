@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Depends, Query
 from Src.ev_charging_bot import EVChargingStationBot
 
 # Create a router
@@ -11,10 +11,19 @@ bot = EVChargingStationBot(
     use_decoder=False
 )
 
+session_memory = []
+
+
 @router.get("/chat")
 def chat(query: str = Query(..., description="User query for charging stations")):
+    session_memory.append(f"From User: {query}")
     response = bot.chat_assistant(query)
+    session_memory.append(f"From Bot: {response}")
     return {"query": query, "response": response['response']}
+
+@router.get("/session")
+def get_session():
+    return {"session_memory": session_memory}
 
 # @router.get("/nearby")
 # def nearby(lat: float, lon: float, radius_km: float = 5):

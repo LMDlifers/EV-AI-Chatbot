@@ -98,10 +98,11 @@ npm install
 # Install backend dependencies
 pip install -r requirements.txt
 
-# Start the backend server
+# Start the backend server in EV-AI-Chatbot directory
 uvicorn main:app --reload --port 8000
 
-# Start the frontend (in a new terminal)
+# Start the frontend (in a new terminal) in ev-chatbot-frontend directory
+cd ev-chatbot-frontend
 npm start
 ```
 

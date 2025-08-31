@@ -798,17 +798,17 @@ class EVChargingStationBot:
             'total_level2_ports': self.df['EV Level2 EVSE Num'].sum(),
             'total_fast_dc_ports': self.df['EV DC Fast Count'].sum()
         }
-    
-    def chat_assistant(self, user_query: str, conversation_context: Dict = None) -> Dict:
+
+    def chat_assistant(self, user_query: str, lat = None, lon = None) -> Dict:
         """Simple, working chat assistant that actually executes searches."""
-        if conversation_context is None:
+        if lat is not None and lon is not None:
             conversation_context = {
-                'location': {'lat': 40.7128, 'lon': -74.0060, 'name': 'New York City'},
-                'conversation_history': []
+                'location': {'lat': lat, 'lon': lon },
             }
-        
-        # Add current query to history
-        conversation_context['conversation_history'].append(f"User: {user_query}")
+        else:
+            conversation_context = {
+                'location': {'lat': 40.7128, 'lon': -74.0060 },
+            }
         
         query_lower = user_query.lower().strip()
         

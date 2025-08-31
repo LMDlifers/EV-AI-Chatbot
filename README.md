@@ -161,19 +161,8 @@ GET /stations/24-hour
 | **Work Charging** | *"Level 2 charging for 8 hours"* | 🏢 Workplace-friendly stations |
 | **Night Charging** | *"24-hour accessible stations"* | 🌙 Safe, well-lit night options |
 
-### **Screenshots**
-
-```
-🖥️ Desktop Interface          📱 Mobile Interface
-┌─────────────────────────┐    ┌──────────────┐
-│  ⚡ ZapVite Assistant   │    │ ⚡ ZapVite    │
-│                         │    │              │
-│  💬 Chat Interface      │    │ 💬 Chat      │
-│  🗺️  Map Integration     │    │ 📍 Location   │
-│  📊 Station Details     │    │ ⚡ Quick Find │
-└─────────────────────────┘    └──────────────┘
-```
-
+### **Screenshot**
+![ZapVite Desktop Screenshot](screenshot.png)
 ---
 
 ## 🏗️ **Architecture**
@@ -248,20 +237,6 @@ uvicorn main:app --reload    # Start API server
 python -m pytest           # Run API tests
 python train_model.py       # Retrain AI models
 ```
-
-### **Testing**
-
-```bash
-# Frontend Tests
-npm test -- --coverage
-
-# Backend Tests  
-pytest --cov=backend/
-
-# Integration Tests
-npm run test:e2e
-```
-
 ---
 
 ## 🤝 **Contributing**
@@ -290,21 +265,6 @@ Found a bug? Please include:
 - 📱 **Browser/device information**  
 - 📊 **Expected vs actual behavior**
 - 📷 **Screenshots** if applicable
-
----
-
-## 📚 **Documentation**
-
-### **API Reference**
-- 📖 **[Full API Docs](http://localhost:8000/docs)** - Interactive Swagger UI
-- 🔗 **[Postman Collection](./docs/zapvite.postman_collection.json)** - Ready-to-use API tests
-
-### **Guides**
-- 🚀 **[Quick Start Guide](./docs/quickstart.md)** - Get up and running
-- 🎨 **[UI Customization](./docs/customization.md)** - Theming and styling
-- 🤖 **[AI Model Training](./docs/training.md)** - Custom model development
-- 🗺️ **[Geographic Features](./docs/geography.md)** - Location-based functionality
-
 ---
 
 ## 🎯 **Roadmap**
@@ -320,14 +280,6 @@ Found a bug? Please include:
 - [ ] **Route optimization** with charging stops
 - [ ] **Social features** (reviews, photos)
 - [ ] **Fleet management** for businesses
-
----
-
-## 🏆 **Awards & Recognition**
-
-- 🥇 **Best AI Innovation** - TechCrunch Disrupt 2024
-- ⭐ **Top EV Tool** - Clean Energy Awards
-- 🎖️ **People's Choice** - AI Hackathon NYC
 
 ---
 
@@ -358,19 +310,6 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 - 👥 **Open Source Community** - For amazing tools and libraries
 - 🔬 **Research Community** - For advancing EV infrastructure
 - 🌱 **Environmental Advocates** - For promoting sustainable transportation
-
----
-
-## 📞 **Contact & Support**
-
-<div align="center">
-
-**🌐 Website**: [zapvite.ai](https://zapvite.ai) | **📧 Email**: support@zapvite.ai
-
-**💬 Community**: [Discord](https://discord.gg/zapvite) | **🐦 Twitter**: [@ZapViteAI](https://twitter.com/zapviteai)
-
-**📱 Download**: [iOS App Store](https://apps.apple.com/zapvite) | [Google Play](https://play.google.com/store/apps/zapvite)
-
 ---
 
 *Built with ❤️ for sustainable transportation and powered by ⚡ for the future*

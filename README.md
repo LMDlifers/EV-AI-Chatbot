@@ -92,41 +92,20 @@
 git clone https://github.com/yourusername/zapvite.git
 cd zapvite
 
-# Install frontend dependencies
-npm install
-
 # Install backend dependencies
 pip install -r requirements.txt
 
 # Start the backend server in EV-AI-Chatbot directory
-uvicorn main:app --reload --port 8000
+python -m uvicorn Src.server:app --reload
 
-# Start the frontend (in a new terminal) in ev-chatbot-frontend directory
+# Open a new terminal, install frontend dependencies, and start the frontend in ev-chatbot-frontend directory
 cd ev-chatbot-frontend
+npm install
 npm start
 ```
+> **Note**: If you get a geolocation error, make sure to enable location permissions in your browser.
 
 The application will be available at `http://localhost:3000`
-
-### **Environment Setup**
-
-Create a `.env` file in the root directory:
-
-```env
-# API Configuration
-REACT_APP_API_URL=http://localhost:8000
-FASTAPI_ENV=development
-
-# Kaggle API (for dataset access)
-KAGGLE_USERNAME=your_username
-KAGGLE_KEY=your_api_key
-
-# Optional: Model Configuration
-EMBEDDING_MODEL=all-MiniLM-L6-v2
-DECODER_MODEL=gpt2
-```
-
----
 
 ## 💻 **Usage**
 
